@@ -1,0 +1,9 @@
+# -------------------------------------------------------------------------
+# Application Configurations
+# -------------------------------------------------------------------------
+spring:
+  boot:
+    admin:
+      discovery:
+        management:
+          context-path: ${management.context-path}

@@ -1,0 +1,150 @@
+---
+spring:
+  profiles: kafka
+
+# Kafaka Configurations
+kafka:
+  defaultTopic: cij.sales.shoppingcart
+  config:
+    bootstrap.servers: ${kafka.brokers:localhost:9092}
+    key.serializer: org.apache.kafka.common.serialization.StringSerializer
+    value.serializer: org.apache.kafka.common.serialization.StringSerializer
+    request.required.acks: 1
+
+---
+server:
+  port: ${PORT:9091}
+#  context-path: /offersapi
+
+management:
+  port: ${PORT:9091}
+
+
+logging:
+  level:
+    org.springframework:
+      security: INFO
+
+
+
+# Application options, Neo4j queries, and other settings
+app:
+  extensions:
+    promotionsApiUrl: http://${neo4j.host:localhost}:${neo4j.port:7474}/examples/unmanaged/promotionsApi/fetchResults
+    rulesApiUrl: http://${rule.service.host:localhost}:${rule.service.port:9001}/execute/123
+
+  options:
+    isCacheEnabled: true
+    depthStartNode: 0
+    rules: rule
+    arrays: >
+      disabled,show,hide,removeOfferList,requiredOffersList,not_compatible,require,contain,include,have,has,has_agreement,parentId,impact,eligibleOfferList
+    labels: >
+      product,promotion,productcategory,shoppingcart,swap,shoppingcartproduct,shoppingcartruleroot,rule,eligibilityrule,
+      eligibilityruleroot,model,agreement,customeragreement,customerassets
+
+  neo4j:
+    apiUrl: http://${neo4j.host:localhost}:${neo4j.port:7474}/db/data
+    queries:
+      eligibilityquery: >
+        match (n:account{ID:{accountId}})-[r:IS_IN]->(segments:segment) with segments
+        match (segments)-[k:CONTAIN]->(promotions) with promotions,segments
+        optional match (promotions)-[j:INCLUDE]-(products) with promotions,j,products,segments
+        optional match (products)-[z:HAS_RULE]-(rules) with promotions,j,products,segments,rules,z
+        optional match (products)-[i:REQUIRE]-(products2) with promotions,j,products,segments,rules,z,products2
+        optional match (promotions)-[i:DISABLED]-(products3) with promotions,j,products,segments,rules,z,products2,products3
+        optional match (products)-[i:DISABLED]-(products4)
+        return  distinct promotions,products,j,products2,z,rules,products3,i,products4
+
+      eligibilityGlobalRules: >
+        match (eligibilityRoot:eligibilityruleroot)-[r:HAS_RULE]-(rules) return rules;
+
+      eligibilityShoppingCartRules: >
+        match (shoppingcartrules:shoppingcartruleroot)-[r:HAS_RULE]-(rules) return rules;
+
+      validationRulesonPick: >
+        match (n:promotion)-[r:INCLUDE]-(k) where n.ID={ID} return n,k;
+
+      clearShoppingcartQuery: >
+        match (n:account{ID:{accountId}})-[shoppingcarts:HAS_CART]-(shopproducts)-[cartproduct:HAS_CART_PRODUCT]-(prod) delete cartproduct,prod;
+
+      eligibilityqueryByparam: >
+        match (segments:segment)-[k:CONTAIN]->(promotions) ,(promotions)-[j:INCLUDE]-(prod)
+        where ANY (zipcode in segments.zipCode where zipcode={zip})
+          and ANY (creditBand in segments.creditBand where creditBand={creditband})
+          and ANY (marketingSourceCode in segments.marketingSourceCode where marketingSourceCode={marketingSourceCode})
+          and NOT (promotions.ID IN {removeList})
+          and promotions.startDate < timestamp()
+          and promotions.endDate > timestamp()
+          with promotions,segments
+        optional match (promotions)-[j:DISABLED|HAS_AGREEMENT]->(products)  with promotions,j,products,segments
+        optional match (promotions)<-[z1:HAVE]-(categories) with promotions,j,products,segments,z1,categories
+        optional match (products)-[z:HAS_RULE|REQUIRE|DISABLED]->(rules)
+        return promotions,j,products,segments,z1,categories,z,rules
+
+      eligibilityqueryByparamNoIn: >
+        match (segments:segment)-[k:CONTAIN]->(promotions)
+        where ANY (zipcode in segments.zipCode where zipcode={zip})
+          and ANY (creditBand in segments.creditBand where creditBand={creditband})
+          and ANY (marketingSourceCode in segments.marketingSourceCode where marketingSourceCode={marketingSourceCode})
+          and promotions.startDate < timestamp()
+          and promotions.endDate > timestamp()
+          with promotions,segments
+        optional match (promotions)<-[z1:HAVE]-(categoriz)
+        return categoriz, promotions
+
+
+      agreementfetch: >
+        match (n:agreement)-[hasrule:HAS_RULE]->(rules) where n.ID IN {agreementList} return n,rules
+
+      customeragreementfetch: >
+        match (n:account {ID:{accountId}})-[aggr:CUSTOMER_AGREEMENTS]->(aggrs) return aggrs
+
+      toString: marketingSourceCode,creditband
+
+      removeShoppingCartProducts: >
+        match (shoppingcart:shoppingcart {ID:{scartId}})-[hascartproduct:HAS_CART_PRODUCT]-(shoppingcartproduct:shoppingcartproduct{ID:{ID}})
+        delete hascartproduct,shoppingcartproduct
+
+      fetchAllShoppingCartItems: >
+        match (n:shoppingcart {ID:{ID}})-[r:HAS_CART_PRODUCT]-(shoppingproduct:shoppingcartproduct) return shoppingproduct
+
+      fetchAllShoppingCartItemsasID: >
+        match (n:shoppingcart {ID:{ID}})-[r:HAS_CART_PRODUCT]-(cartproduct) return cartproduct.ID as ID
+
+      screens: >
+        MATCH (a:Screens)-[r:HAS_PANEL]->(b:Panel) WHERE labels(a) <> [] AND labels(b) <> [] RETURN DISTINCT a,r,b
+
+      fetchallSegmentChildren: >
+        match (segments:segment)-[k:CONTAIN]->(promotions) with promotions,segments
+        optional match (promotions)-[j:INCLUDE]->(products)  with promotions,j,products,segments
+        optional match (promotions)<-[z1:HAVE]-(categories) with promotions,j,products,segments,z1,categories
+        optional match (products)<-[z2:HAVE]-(categoriesz) with promotions,j,products,segments,z1,categories,z2,categoriesz
+        optional match (products)-[z:HAS_RULE]->(rules)  with promotions,j,products,segments,rules,z,z1,categories,z2,categoriesz
+        optional match (products)-[i:REQUIRE]->(products2) with promotions,j,products,z1,categories,segments,rules,z,products2,z2,categoriesz
+        optional match (promotions)-[i:DISABLED]->(products3) with z1,categories,promotions,j,products,segments,rules,z,products2,products3,z2,categoriesz
+        optional match (products)-[i:DISABLED]->(products4) with z1,categories,promotions,j,i,products,segments,rules,z,products2,products3,products4,z2,categoriesz
+        optional match (promotions)-[aggreement:HAS_AGREEMENT]->(agreements)
+        return  distinct z1,categories,promotions,j,i,products,segments,rules,z,products2,products3,products4,z2,categoriesz,aggreement
+
+      fetchChildren: >
+        MATCH (roots:segment {ID:{ID}})-[relations]->(children)
+        return roots.ID as PARENT_ID,roots.name as PARENT_NAME,roots.description as PARENT_DESC,
+        type(relations) as relationType,children.ID as CHILD_ID,children.name as CHILD_NAME,
+        children.description as CHILD_DESC,
+        length((roots:segment {ID:'DUO'})-[relations]->(children)) as DIRECTION
+
+      eligibilityqueryByparamAccount: >
+        match p=(n:account {ID:{accountId}})-[:NOT_ELIGIBLE_FOR]->(promotion),
+              (n)-[:IS_IN]->(segment)-[:CONTAIN]->(prom)<-[r:HAVE]-(cats),
+              (n)-[:ELIGIBLE_FOR]->(promotions)<-[r1:HAVE]-(catss)
+        where NOT(prom in nodes(p))
+        return prom,cats,promotions,catss
+
+      metadataStatement: >
+        match (n:metadata) return n
+
+      fetchTemplates: >
+        MATCH (n:entitytemplate)-[r:TEMPLATE]-(temp:template) where r.type IN {type} RETURN temp
+
+

@@ -1,0 +1,25 @@
+---
+spring:
+  profiles: local
+
+---
+spring:
+  profiles: dev
+
+---
+spring:
+  profiles: prod
+
+
+---
+# global configuration for all apps
+
+management:
+  port: ${PORT:${server.port}}
+  context-path: /management
+
+eureka:
+  instance:
+    preferIpAddress: true
+    statusPageUrlPath: ${management.context-path}/info
+    healthCheckUrlPath: ${management.context-path}/health
