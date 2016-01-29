@@ -1,0 +1,10 @@
+# -------------------------------------------------------------------------
+# Application Configurations
+# -------------------------------------------------------------------------
+zuul:
+  ignoredServices: '*'
+  routes:
+    PROMOTION-MANAGER-API: /offer2/**
+    NEO4J-SERVER-API:
+        path: /db/data/**
+        url: http://${neo4j.host:localhost}:${neo4j.port:7474}/db/data
